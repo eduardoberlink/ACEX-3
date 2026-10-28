@@ -1,117 +1,103 @@
-import pygame
-from pygame.locals import *
+"""Fase 3 - Inimigo
 
+Novidade: um inimigo que patrulha e um estado de "morreu".
+(Nota didática: a física volta a ser só o chão, sem plataformas e sem dash.)
+Controles: A/D andar, W/Espaço pular, R repetir.
+"""
+import pygame
+from pygame.locals import K_SPACE, K_r, K_w, KEYDOWN, QUIT
+
+from inimigos.enemy import Inimigo
 from objetos.plataformas import Plataforma
 from objetos.porta import Porta
 from personagem.player import Player
-from inimigos.enemy import Inimigo
 
-pygame.init()
-
-# --- Configurações Fase 3 ---
+# --- Configurações ---
 SCREEN_WIDTH = 1000
 SCREEN_HEIGHT = 600
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption('Fase 3 - Básico')
-clock = pygame.time.Clock()
+FPS = 60
 
-# Cores
+GROUND_H = 50
+PORTA_TAMANHO = 100
+PLAYER_TAMANHO = 50
+INIMIGO_TAMANHO = 40
+INIMIGO_VELOCIDADE = 8
+
+# --- Cores ---
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 100, 255)
-MAGENTA = (255, 0, 255)
-
-# --- Criando o Mundo ---
-ground_height = 50
-
-# 1. Chão (Única plataforma desta fase)
-chao = Plataforma(0, SCREEN_HEIGHT - ground_height, SCREEN_WIDTH, ground_height, GREEN)
-
-# 2. Saída
-final_size = 100
-porta_final = Porta(SCREEN_WIDTH - final_size, SCREEN_HEIGHT - ground_height - final_size, final_size)
-
-# 3. Inimigo
-enemy_size = 40
-limit_door = SCREEN_WIDTH - final_size # Limite direito é a porta
-inimigo = Inimigo(
-    limit_door - enemy_size,            # Começa perto da porta
-    SCREEN_HEIGHT - ground_height - enemy_size, 
-    enemy_size, 
-    0,                                  # Limite esquerdo
-    limit_door,                         # Limite direito
-    speed=8
-)
-
-# 4. Player
-player_size = 50
-player = Player(0, 0, player_size, SCREEN_WIDTH)
-player.bottomleft = chao.topleft
 
 # --- Estados ---
-passou = False
-morreu = False
+JOGANDO, MORREU, VENCEU = "jogando", "morreu", "venceu"
 
-def reiniciar_jogo():
-    global passou, morreu
-    player.reset()
-    inimigo.reset()
-    passou = False
-    morreu = False
 
-# --- Loop ---
-running = True
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+def desenhar_mensagem(screen, fonte, texto, cor_texto, cor_fundo):
+    screen.fill(cor_fundo)
+    render = fonte.render(texto, True, cor_texto)
+    screen.blit(render, (SCREEN_WIDTH // 2 - render.get_width() // 2, SCREEN_HEIGHT // 2))
 
-        if not passou and not morreu:
-            if event.type == pygame.KEYDOWN:
-                # Pulo Simples
-                if (event.key == K_SPACE or event.key == K_w):
-                    player.jump()
-                # (Nota Didática: Aqui não tem checagem de Dash 'E')
+
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_caption("Fase 3 - Básico")
+    clock = pygame.time.Clock()
+    fonte_morte = pygame.font.SysFont("arial", 20, bold=True, italic=True)
+    fonte_vitoria = pygame.font.SysFont("arial", 20, bold=True)
+
+    # --- Mundo ---
+    chao = Plataforma(0, SCREEN_HEIGHT - GROUND_H, SCREEN_WIDTH, GROUND_H, GREEN)  # única plataforma
+    porta = Porta(SCREEN_WIDTH - PORTA_TAMANHO, chao.top - PORTA_TAMANHO, PORTA_TAMANHO)
+
+    # O inimigo patrulha do canto esquerdo até a porta, começando perto dela
+    inimigo = Inimigo(
+        porta.left - INIMIGO_TAMANHO, chao.top - INIMIGO_TAMANHO, INIMIGO_TAMANHO,
+        limit_left=0, limit_right=porta.left, speed=INIMIGO_VELOCIDADE,
+    )
+
+    player = Player(0, chao.top - PLAYER_TAMANHO, PLAYER_TAMANHO, SCREEN_WIDTH)
+
+    estado = JOGANDO
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                running = False
+            elif event.type == KEYDOWN:
+                if estado == JOGANDO and event.key in (K_SPACE, K_w):
+                    player.jump()  # pulo simples (ainda não existe dash)
+                elif estado != JOGANDO and event.key == K_r:
+                    player.reset()
+                    inimigo.reset()
+                    estado = JOGANDO
+
+        if estado == JOGANDO:
+            player.update(chao)  # nesta fase passamos só o chão, não uma lista
+            inimigo.update()
+
+            if player.colliderect(inimigo):
+                estado = MORREU
+            elif player.colliderect(porta):
+                estado = VENCEU
+
+            screen.fill(BLUE)
+            chao.draw(screen)
+            porta.draw(screen)
+            inimigo.draw(screen)
+            player.draw(screen)
+        elif estado == MORREU:
+            desenhar_mensagem(screen, fonte_morte, "Você morreu!! Pressione R para repetir", WHITE, RED)
         else:
-            if event.type == pygame.KEYDOWN and event.key == K_r:
-                reiniciar_jogo()
+            desenhar_mensagem(screen, fonte_vitoria, "Parabéns! Pressione R para Repetir.", WHITE, BLACK)
 
-    if not passou and not morreu:
-        # Updates
-        # Na fase 3, passamos apenas o objeto 'chao', não uma lista
-        player.update(chao) 
-        inimigo.update()
+        pygame.display.flip()
+        clock.tick(FPS)
 
-        # Colisões
-        if player.colliderect(inimigo):
-            morreu = True
-        
-        if player.colliderect(porta_final):
-            passou = True
+    pygame.quit()
 
-        # Desenho
-        screen.fill(BLUE)
-        
-        chao.draw(screen)
-        porta_final.draw(screen)
-        inimigo.draw(screen)
-        player.draw(screen)
 
-    elif morreu:
-        font = pygame.font.SysFont('arial', 20, True, True)
-        text = font.render('Você morreu!! Pressione R para repetir', True, WHITE)
-        screen.fill(RED)
-        screen.blit(text, (SCREEN_WIDTH//2 - text.get_width()//2, SCREEN_HEIGHT // 2))
-
-    elif passou:
-        font = pygame.font.SysFont('arial', 20, True, False)
-        text = font.render('Parabéns! Pressione R para Repetir.', True, WHITE)
-        screen.fill(BLACK)
-        screen.blit(text, (SCREEN_WIDTH//2 - text.get_width()//2, SCREEN_HEIGHT // 2))
-
-    pygame.display.flip()
-    clock.tick(60)
-
-pygame.quit()
+if __name__ == "__main__":
+    main()

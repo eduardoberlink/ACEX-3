@@ -1,29 +1,25 @@
 import pygame
 
+
 class Inimigo(pygame.Rect):
-    def __init__(self, x, y, size, limit_left, limit_right):
+    COLOR = (255, 0, 255)  # magenta
+
+    def __init__(self, x, y, size, limit_left, limit_right, speed=3):
         super().__init__(x, y, size, size)
-        self.color = (255, 0, 255) # Magenta
-        self.speed = 3
+        self.speed = speed
         self.limit_left = limit_left
         self.limit_right = limit_right
-        
-        # Posição inicial para reset
-        self.start_x = x
-        self.start_y = y
+        self.start_pos = (x, y)  # para o reset
 
     def update(self):
         self.x += self.speed
-
-        # Inverte direção ao atingir as bordas
+        # Inverte a direção ao atingir as bordas
         if self.left <= self.limit_left or self.right >= self.limit_right:
             self.speed *= -1
 
     def reset(self):
-        self.x = self.start_x
-        self.y = self.start_y
-        self.speed = abs(self.speed) # Reseta velocidade positiva
+        self.topleft = self.start_pos
+        self.speed = abs(self.speed)  # volta andando para a direita
 
     def draw(self, screen, camera):
-        rect_visivel = camera.apply(self)
-        pygame.draw.rect(screen, self.color, rect_visivel)
+        pygame.draw.rect(screen, self.COLOR, camera.apply(self))

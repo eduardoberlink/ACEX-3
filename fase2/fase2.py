@@ -1,107 +1,95 @@
+"""Fase 2 - Plataformas
+
+Novidade: uma LISTA de plataformas e colisão por todos os lados.
+Controles: A/D andar, W/Espaço pular, R repetir.
+"""
 import pygame
-from pygame.locals import *
+from pygame.locals import K_SPACE, K_r, K_w, KEYDOWN, QUIT
 
 from objetos.plataformas import Plataforma
 from objetos.porta import Porta
 from personagem.player import Player
 
-pygame.init()
-
-# --- Configurações Fase 2 (Tela Menor) ---
+# --- Configurações ---
 SCREEN_WIDTH = 1000
-SCREEN_HEIGHT = 600  # <--- Altura ajustada
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption('Fase 2 - Plataformas ')
-clock = pygame.time.Clock()
+SCREEN_HEIGHT = 600
+FPS = 60
 
-# Cores
+GROUND_H = 50
+PORTA_TAMANHO = 80
+PLAYER_TAMANHO = 50
+
+# --- Cores ---
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 100, 255)
 YELLOW = (255, 255, 0)
 
-# --- Criando o Mundo ---
-ground_height = 50
-objetos_colisao = []
-
-# 1. Chão (Agora fica na posição Y = 550)
-chao = Plataforma(0, SCREEN_HEIGHT - ground_height, SCREEN_WIDTH, ground_height, GREEN)
-objetos_colisao.append(chao)
-
-# 2. Plataformas Voadoras (Recalculadas para caber em 600px)
-# O chão está em y=550. O pulo alcança uns 120px de altura.
-# Vamos subir de 100 em 100 pixels.
-plataformas_coords = [
-    (200, 450, 150, 20),  # Degrau 1
-    (450, 350, 150, 20),  # Degrau 2
-    (700, 250, 150, 20),  # Degrau 3
-    (400, 150, 200, 20)   # Degrau 4 (O mais alto)
+# --- Mapa ---
+# O chão fica em y=550 e o pulo alcança uns 120px: os degraus sobem de 100 em 100.
+DEGRAUS = [  # (x, y, largura, altura)
+    (200, 450, 150, 20),  # degrau 1
+    (450, 350, 150, 20),  # degrau 2
+    (700, 250, 150, 20),  # degrau 3
+    (400, 150, 200, 20),  # degrau 4 (o mais alto, com a porta)
 ]
 
-for (x, y, w, h) in plataformas_coords:
-    p = Plataforma(x, y, w, h, YELLOW)
-    objetos_colisao.append(p)
 
-# 3. Saída
-# Coloca a porta em cima da última plataforma (Degrau 4)
-final_size = 80
-ultima_plat = objetos_colisao[-1] 
-porta_final = Porta(ultima_plat.x + 50, ultima_plat.top - final_size, final_size)
+def desenhar_mensagem(screen, fonte, texto, cor_texto, cor_fundo):
+    screen.fill(cor_fundo)
+    render = fonte.render(texto, True, cor_texto)
+    screen.blit(render, (SCREEN_WIDTH // 2 - render.get_width() // 2, SCREEN_HEIGHT // 2))
 
-# 4. Player
-player_size = 50
-player = Player(0, 0, player_size, SCREEN_WIDTH)
-player.bottomleft = chao.topleft
 
-# --- Estados ---
-passou = False
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_caption("Fase 2 - Plataformas")
+    clock = pygame.time.Clock()
+    fonte = pygame.font.SysFont("arial", 20, bold=True)
 
-def reiniciar_jogo():
-    global passou
-    player.reset()
+    # --- Mundo ---
+    chao = Plataforma(0, SCREEN_HEIGHT - GROUND_H, SCREEN_WIDTH, GROUND_H, GREEN)
+    plataformas = [chao] + [Plataforma(*d, YELLOW) for d in DEGRAUS]
+
+    # A porta fica em cima do último degrau
+    topo = plataformas[-1]
+    porta = Porta(topo.x + 50, topo.top - PORTA_TAMANHO, PORTA_TAMANHO)
+
+    # O jogador começa em pé no canto esquerdo do chão
+    player = Player(0, chao.top - PLAYER_TAMANHO, PLAYER_TAMANHO, SCREEN_WIDTH)
+
     passou = False
-
-# --- Loop ---
-running = True
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                running = False
+            elif event.type == KEYDOWN:
+                if not passou and event.key in (K_SPACE, K_w):
+                    player.jump()
+                elif passou and event.key == K_r:
+                    player.reset()
+                    passou = False
 
         if not passou:
-            if event.type == pygame.KEYDOWN:
-                if (event.key == K_SPACE or event.key == K_w):
-                    player.jump()
+            player.update(plataformas)
+            passou = player.colliderect(porta)
+
+            screen.fill(BLUE)
+            for plat in plataformas:
+                plat.draw(screen)
+            porta.draw(screen)
+            player.draw(screen)
         else:
-            if event.type == pygame.KEYDOWN and event.key == K_r:
-                reiniciar_jogo()
+            desenhar_mensagem(screen, fonte, "Parabéns! Pressione R para Repetir.", WHITE, BLACK)
 
-    if not passou:
-        # Update
-        player.update(objetos_colisao)
+        pygame.display.flip()
+        clock.tick(FPS)
 
-        # Colisão com Porta
-        if player.colliderect(porta_final):
-            passou = True
+    pygame.quit()
 
-        # Desenho
-        screen.fill(BLUE)
-        
-        for obj in objetos_colisao:
-            obj.draw(screen)
-            
-        porta_final.draw(screen)
-        player.draw(screen)
 
-    elif passou:
-        font = pygame.font.SysFont('arial', 20, True, False)
-        text = font.render('Parabéns! Pressione R para Repetir.', True, WHITE)
-        screen.fill(BLACK)
-        screen.blit(text, (SCREEN_WIDTH//2 - text.get_width()//2, SCREEN_HEIGHT // 2))
-
-    pygame.display.flip()
-    clock.tick(60)
-
-pygame.quit()
+if __name__ == "__main__":
+    main()

@@ -1,34 +1,30 @@
 import pygame
 
+
 class Inimigo(pygame.Rect):
+    COLOR = (255, 0, 255)  # magenta
+
     def __init__(self, x, y, size, limit_left, limit_right, speed=8):
         super().__init__(x, y, size, size)
-        self.color = (255, 0, 255) # Magenta
         self.speed = speed
         self.limit_left = limit_left
         self.limit_right = limit_right
-        
-        # Posição inicial para reset
-        self.start_x = x
-        self.start_y = y
+        self.start_pos = (x, y)  # para o reset
 
     def update(self):
         self.x += self.speed
 
-        # BLOQUEIO ESQUERDO
-        # Se bateu no limite esquerdo E está andando para a esquerda (< 0)
+        # Só inverte se bateu no limite E ainda está indo na direção dele
+        # (assim o inimigo não fica "tremendo" preso na borda)
         if self.left <= self.limit_left and self.speed < 0:
             self.speed *= -1
-            
-        # BLOQUEIO DIREITO
-        # Se bateu no limite direito E está andando para a direita (> 0)
         elif self.right >= self.limit_right and self.speed > 0:
             self.speed *= -1
+
     def reset(self):
-        self.x = self.start_x
-        self.y = self.start_y
-        self.speed = abs(self.speed) # Reseta velocidade positiva
+        self.topleft = self.start_pos
+        self.speed = abs(self.speed)  # volta andando para a direita
 
     def draw(self, screen):
-        # Desenha direto na posição x,y (Sem câmera)
-        pygame.draw.rect(screen, self.color, self)
+        # Desenha direto na posição (sem câmera)
+        pygame.draw.rect(screen, self.COLOR, self)

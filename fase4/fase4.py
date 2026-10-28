@@ -1,141 +1,122 @@
-import pygame
-from pygame.locals import *
+"""Fase 4 - Habilidades
 
-# Importa as classes da pasta Fase_04
+Novidades: plataformas + inimigo juntos, pulo duplo, dash e escalada.
+Controles: A/D andar, W/Espaço pular (2x), E dash, W na parede escala, R repetir.
+"""
+import pygame
+from pygame.locals import K_SPACE, K_e, K_r, K_w, KEYDOWN, QUIT
+
+from inimigos.enemy import Inimigo
 from objetos.plataformas import Plataforma
 from objetos.porta import Porta
 from personagem.player import Player
-from inimigos.enemy import Inimigo
 
-pygame.init()
-
-# --- Configurações da Fase 4 ---
-# Tela Grande, fixa
+# --- Configurações ---
+# Tela grande e fixa (ainda sem câmera)
 SCREEN_WIDTH = 1000
 SCREEN_HEIGHT = 600
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption('Fase 4')
-clock = pygame.time.Clock()
+FPS = 65
 
-# Cores
+GROUND_H = 50
+PORTA_TAMANHO = 100
+PLAYER_TAMANHO = 50
+INIMIGO_TAMANHO = 40
+INIMIGO_X = 600
+INIMIGO_VELOCIDADE = 0  # com 0 o inimigo fica parado
+
+# --- Cores ---
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 100, 255)
 YELLOW = (255, 255, 0)
-MAGENTA = (255, 0, 255)
 
-# --- Criando o Mundo ---
-
-# 1. Chão e Plataformas
-ground_height = 50
-# Lista para passar para o player checar colisão
-objetos_colisao = []
-
-# Chão
-chao = Plataforma(0, SCREEN_HEIGHT - ground_height, SCREEN_WIDTH, ground_height, GREEN)
-objetos_colisao.append(chao)
-
-# Plataformas (Posições originais da Fase 4)
-plat_coords = [
-    (150, SCREEN_HEIGHT - ground_height - 100, 200, 20),
-    (400, SCREEN_HEIGHT - ground_height - 200, 150, 20),
-    (650, SCREEN_HEIGHT - ground_height - 300, 200, 20)
+# --- Mapa ---
+CHAO_Y = SCREEN_HEIGHT - GROUND_H
+PLATAFORMAS = [  # (x, y, largura, altura)
+    (150, CHAO_Y - 100, 200, 20),
+    (400, CHAO_Y - 200, 150, 20),
+    (650, CHAO_Y - 300, 200, 20),
 ]
-for (x, y, w, h) in plat_coords:
-    p = Plataforma(x, y, w, h, YELLOW)
-    objetos_colisao.append(p)
 
-# 2. Saída
-final_size = 100
-porta_final = Porta(SCREEN_WIDTH - final_size, SCREEN_HEIGHT - ground_height - final_size, final_size)
+# --- Estados ---
+JOGANDO, MORREU, VENCEU = "jogando", "morreu", "venceu"
 
-# 3. Inimigo
-enemy_size = 40
-# Limites da patrulha (Começo da tela até antes da porta)
-borda_dir = 600
-limite_porta= SCREEN_WIDTH - final_size
-inimigo = Inimigo(borda_dir, 
-                  SCREEN_HEIGHT - ground_height - enemy_size, 
-                  enemy_size, 
-                  0,
-                  limite_porta, 
-                  speed=0)
 
-# 4. Player
-player_size = 50
-player = Player(0, 0, player_size, SCREEN_WIDTH)
-player.bottomleft = chao.topleft # Posiciona no chão
+def desenhar_mensagem(screen, fonte, texto, cor_texto, cor_fundo):
+    screen.fill(cor_fundo)
+    render = fonte.render(texto, True, cor_texto)
+    screen.blit(render, (SCREEN_WIDTH // 2 - render.get_width() // 2, SCREEN_HEIGHT // 2))
 
-# --- Variáveis de Controle ---
-passou = False
-morreu = False
 
-def reiniciar_jogo():
-    global passou, morreu
-    # Reset do player
-    player.reset()
-    # Reset do inimigo
-    inimigo.reset()
-    
-    passou = False
-    morreu = False
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_caption("Fase 4")
+    clock = pygame.time.Clock()
+    fonte_morte = pygame.font.SysFont("arial", 20, bold=True, italic=True)
+    fonte_vitoria = pygame.font.SysFont("arial", 20, bold=True)
 
-# --- Loop Principal ---
-running = True
-while running:
-    # 1. Eventos
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+    # --- Mundo ---
+    chao = Plataforma(0, CHAO_Y, SCREEN_WIDTH, GROUND_H, GREEN)
+    plataformas = [chao] + [Plataforma(*d, YELLOW) for d in PLATAFORMAS]
 
-        if not passou and not morreu:
-            if event.type == pygame.KEYDOWN:
-                if (event.key == K_SPACE or event.key == K_w):
-                    player.jump()
-                if event.key == K_e:
-                    player.start_dash()
+    porta = Porta(SCREEN_WIDTH - PORTA_TAMANHO, CHAO_Y - PORTA_TAMANHO, PORTA_TAMANHO)
+
+    # Patrulha do começo da tela até a porta
+    inimigo = Inimigo(
+        INIMIGO_X, CHAO_Y - INIMIGO_TAMANHO, INIMIGO_TAMANHO,
+        limit_left=0, limit_right=porta.left, speed=INIMIGO_VELOCIDADE,
+    )
+
+    player = Player(0, CHAO_Y - PLAYER_TAMANHO, PLAYER_TAMANHO, SCREEN_WIDTH)
+
+    estado = JOGANDO
+    running = True
+    while running:
+        # 1. Eventos
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                running = False
+            elif event.type == KEYDOWN:
+                if estado == JOGANDO:
+                    if event.key in (K_SPACE, K_w):
+                        player.jump()
+                    elif event.key == K_e:
+                        player.start_dash()
+                elif event.key == K_r:
+                    player.reset()
+                    inimigo.reset()
+                    estado = JOGANDO
+
+        # 2. Lógica e desenho
+        if estado == JOGANDO:
+            player.update(plataformas)
+            inimigo.update()
+
+            if player.colliderect(inimigo):
+                estado = MORREU
+            elif player.colliderect(porta):
+                estado = VENCEU
+
+            # Desenha tudo direto na tela (sem câmera)
+            screen.fill(BLUE)
+            for plat in plataformas:
+                plat.draw(screen)
+            porta.draw(screen)
+            inimigo.draw(screen)
+            player.draw(screen)
+        elif estado == MORREU:
+            desenhar_mensagem(screen, fonte_morte, "Você morreu!! Pressione R para repetir", WHITE, RED)
         else:
-            if event.type == pygame.KEYDOWN and event.key == K_r:
-                reiniciar_jogo()
+            desenhar_mensagem(screen, fonte_vitoria, "Parabéns! Pressione R para Repetir.", WHITE, BLACK)
 
-    # 2. Lógica de Jogo
-    if not passou and not morreu:
-        player.update(objetos_colisao)
-        inimigo.update()
+        pygame.display.flip()
+        clock.tick(FPS)
 
-        if player.colliderect(inimigo):
-            morreu = True
-        
-        if player.colliderect(porta_final):
-            passou = True
+    pygame.quit()
 
-        # 3. Desenho (Render)
-        screen.fill(BLUE) # Fundo azul simples
-        
-        # Desenha tudo diretamente (sem câmera)
-        for obj in objetos_colisao:
-            obj.draw(screen)
-            
-        porta_final.draw(screen)
-        inimigo.draw(screen)
-        player.draw(screen)
 
-    # 4. Telas de Game Over / Vitoria
-    elif morreu:
-        font = pygame.font.SysFont('arial', 20, True, True)
-        text = font.render('Você morreu!! Pressione R para repetir', True, WHITE)
-        screen.fill(RED)
-        screen.blit(text, (SCREEN_WIDTH//2 - text.get_width()//2, SCREEN_HEIGHT // 2))
-
-    elif passou:
-        font = pygame.font.SysFont('arial', 20, True, False)
-        text = font.render('Parabéns! Pressione R para Repetir.', True, WHITE)
-        screen.fill(BLACK)
-        screen.blit(text, (SCREEN_WIDTH//2 - text.get_width()//2, SCREEN_HEIGHT // 2))
-
-    pygame.display.flip()
-    clock.tick(65)
-
-pygame.quit()
+if __name__ == "__main__":
+    main()

@@ -1,147 +1,115 @@
-import pygame
-from pygame.locals import *
+"""Fase 5 - Câmera
 
-# Importando nossos novos módulos
+Novidades: mundo maior que a tela, câmera que segue o jogador,
+imagem de fundo e configurações separadas em config.py.
+Controles: A/D andar, W/Espaço pular (2x), E dash, W na parede escala, R repetir.
+"""
+import pygame
+from pygame.locals import K_SPACE, K_e, K_r, K_w, KEYDOWN, QUIT
+
 from camera.cam import Camera
+from config import (ASSETS_DIR, BLACK, FPS, GREEN, GROUND_H, RED, SCREEN_HEIGHT,
+                    SCREEN_WIDTH, TITULO, WHITE, WORLD_WIDTH, YELLOW)
+from inimigos.enemy import Inimigo
 from objetos.plataformas import Plataforma
 from objetos.porta import Porta
 from personagem.player import Player
-from inimigos.enemy import Inimigo
 
-pygame.init()
-
-# --- Configurações da Tela ---
-SCREEN_WIDTH = 640
-SCREEN_HEIGHT = 360
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption('Fase 5 - Modularizada')
-clock = pygame.time.Clock()
-
-# --- Cores ---
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-YELLOW = (255, 255, 0)
-
-# --- Carregamento de Assets ---
-# Mantemos isso aqui para passar a imagem para o loop de desenho
-try:
-    background_img_original = pygame.image.load('fase6/assets/background.jpg').convert()
-    background_width = int(SCREEN_WIDTH * 1.4)
-    background_extended = pygame.transform.scale(background_img_original, (background_width, SCREEN_HEIGHT))
-except pygame.error as e:
-    print(f"Erro ao carregar background: {e}")
-    background_width = int(SCREEN_WIDTH * 1.4)
-    background_extended = pygame.Surface((background_width, SCREEN_HEIGHT))
-    background_extended.fill(BLACK)
-
-# --- Setup do Nível ---
-ground_height = 30
-# Lista de objetos que colidem (Chão + Plataformas)
-objetos_colisao = []
-
-# 1. Chão
-chao = Plataforma(0, SCREEN_HEIGHT - ground_height, background_width, ground_height, GREEN)
-objetos_colisao.append(chao)
-
-# 2. Plataformas Flutuantes
-plats_coords = [
-    (80, SCREEN_HEIGHT - ground_height - 60, 100, 15),
-    (260, SCREEN_HEIGHT - ground_height - 120, 120, 15),
-    (450, SCREEN_HEIGHT - ground_height - 80, 100, 15)
+# --- Mapa ---
+CHAO_Y = SCREEN_HEIGHT - GROUND_H
+PLATAFORMAS = [  # (x, y, largura, altura)
+    (80, CHAO_Y - 60, 100, 15),
+    (260, CHAO_Y - 120, 120, 15),
+    (450, CHAO_Y - 80, 100, 15),
 ]
-for (x, y, w, h) in plats_coords:
-    p = Plataforma(x, y, w, h, YELLOW)
-    objetos_colisao.append(p)
+PORTA_X, PORTA_TAMANHO = 560, 30
+INIMIGO_X, INIMIGO_TAMANHO = 300, 25   # começa no meio
+INIMIGO_LIMITE_ESQ = 100
+PLAYER_X, PLAYER_TAMANHO = 50, 25
 
-# 3. Saída (Porta)
-final_size = 30
-porta_final = Porta(560, chao.top - final_size, final_size)
+# --- Estados ---
+JOGANDO, MORREU, VENCEU = "jogando", "morreu", "venceu"
 
-# 4. Inimigo
-enemy_size = 25
-borda_esquerda = 100
-borda_direita = porta_final.left - 20
-# Inicia no meio (300)
-inimigo = Inimigo(300, chao.top - enemy_size, enemy_size, borda_esquerda, borda_direita)
 
-# 5. Jogador
-player_size = 25
-player = Player(50, chao.top - player_size, player_size, background_width)
+def carregar_fundo():
+    """Fundo esticado para a largura do mundo (preto se a imagem não carregar)."""
+    caminho = ASSETS_DIR / "background.jpg"
+    try:
+        img = pygame.image.load(str(caminho)).convert()
+        return pygame.transform.scale(img, (WORLD_WIDTH, SCREEN_HEIGHT))
+    except (pygame.error, FileNotFoundError) as erro:
+        print(f"Erro ao carregar o fundo '{caminho}': {erro}")
+        fundo = pygame.Surface((WORLD_WIDTH, SCREEN_HEIGHT))
+        fundo.fill(BLACK)
+        return fundo
 
-# 6. Câmera
-camera = Camera(background_width, SCREEN_HEIGHT, SCREEN_WIDTH)
 
-# --- Estados do Jogo ---
-passou = False
-morreu = False
+def desenhar_mensagem(screen, fonte, texto, cor_texto, cor_fundo):
+    screen.fill(cor_fundo)
+    render = fonte.render(texto, True, cor_texto)
+    screen.blit(render, (SCREEN_WIDTH // 2 - render.get_width() // 2, SCREEN_HEIGHT // 2))
 
-def reiniciar_jogo():
-    global passou, morreu
-    player.reset()
-    inimigo.reset()
-    passou = False
-    morreu = False
 
-# --- Loop Principal ---
-running = True
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_caption(TITULO)
+    clock = pygame.time.Clock()
+    fonte_morte = pygame.font.SysFont("arial", 20, bold=True, italic=True)
+    fonte_vitoria = pygame.font.SysFont("arial", 20, bold=True)
+    fundo = carregar_fundo()
 
-        if not passou and not morreu:
-            if event.type == pygame.KEYDOWN:
-                # Pulo
-                if (event.key == K_SPACE or event.key == K_w):
-                    player.jump()
-                # Dash
-                if event.key == K_e:
-                    player.start_dash()
+    # --- Mundo ---
+    chao = Plataforma(0, CHAO_Y, WORLD_WIDTH, GROUND_H, GREEN)
+    plataformas = [chao] + [Plataforma(*d, YELLOW) for d in PLATAFORMAS]
+    porta = Porta(PORTA_X, CHAO_Y - PORTA_TAMANHO, PORTA_TAMANHO)
+    inimigo = Inimigo(INIMIGO_X, CHAO_Y - INIMIGO_TAMANHO, INIMIGO_TAMANHO,
+                      limit_left=INIMIGO_LIMITE_ESQ, limit_right=porta.left - 20)
+    player = Player(PLAYER_X, CHAO_Y - PLAYER_TAMANHO, PLAYER_TAMANHO, WORLD_WIDTH)
+    camera = Camera(WORLD_WIDTH, SCREEN_WIDTH)
+
+    estado = JOGANDO
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                running = False
+            elif event.type == KEYDOWN:
+                if estado == JOGANDO:
+                    if event.key in (K_SPACE, K_w):
+                        player.jump()
+                    elif event.key == K_e:
+                        player.start_dash()
+                elif event.key == K_r:
+                    player.reset()
+                    inimigo.reset()
+                    estado = JOGANDO
+
+        if estado == JOGANDO:
+            # --- Atualizações ---
+            player.update(plataformas)
+            inimigo.update()
+            camera.update(player)
+
+            if player.colliderect(inimigo):
+                estado = MORREU
+            elif player.colliderect(porta):
+                estado = VENCEU
+
+            # --- Desenho: só o pedaço do fundo que a câmera vê ---
+            screen.blit(fundo, (0, 0), (camera.x, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
+            for obj in (*plataformas, porta, inimigo, player):
+                obj.draw(screen, camera)
+        elif estado == MORREU:
+            desenhar_mensagem(screen, fonte_morte, "Você morreu!! Pressione R para repetir", WHITE, RED)
         else:
-            # Reiniciar se morreu ou ganhou
-            if event.type == pygame.KEYDOWN and event.key == K_r:
-                reiniciar_jogo()
+            desenhar_mensagem(screen, fonte_vitoria, "Parabéns! Pressione R para Repetir.", WHITE, BLACK)
 
-    if not passou and not morreu:
-        # --- Atualizações (Updates) ---
-        player.update(objetos_colisao)
-        inimigo.update()
-        camera.update(player)
+        pygame.display.flip()
+        clock.tick(FPS)
 
-        # --- Colisões de Jogo ---
-        if player.colliderect(inimigo):
-            morreu = True
-        
-        if player.colliderect(porta_final):
-            passou = True
+    pygame.quit()
 
-        # --- Desenho (Draw) ---
-        # 1. Background (com parallax simples da camera)
-        screen.blit(background_extended, (0, 0), (camera.x, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
 
-        # 2. Objetos
-        for obj in objetos_colisao:
-            obj.draw(screen, camera)
-        
-        porta_final.draw(screen, camera)
-        inimigo.draw(screen, camera)
-        player.draw(screen, camera)
-
-    elif morreu:
-        font = pygame.font.SysFont('arial', 20, True, True)
-        text = font.render('Você morreu!! Pressione R para repetir', True, WHITE)
-        screen.fill(RED)
-        screen.blit(text, (SCREEN_WIDTH//2 - text.get_width()//2, SCREEN_HEIGHT // 2))
-
-    elif passou:
-        font = pygame.font.SysFont('arial', 20, True, False)
-        text = font.render('Parabéns! Pressione R para Repetir.', True, WHITE)
-        screen.fill(BLACK)
-        screen.blit(text, (SCREEN_WIDTH//2 - text.get_width()//2, SCREEN_HEIGHT // 2))
-
-    pygame.display.flip()
-    clock.tick(65)
-
-pygame.quit()
+if __name__ == "__main__":
+    main()

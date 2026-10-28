@@ -1,10 +1,9 @@
-import pygame
+from config import BLACK
+from objetos.entidade import Entidade
+from recursos import superficie_solida
 
-class Porta(pygame.Rect):
+
+class Porta(Entidade):
     def __init__(self, x, y, size):
         super().__init__(x, y, size, size)
-        self.color = (0, 0, 0) # Preto
-
-    def draw(self, screen, camera):
-        rect_visivel = camera.apply(self)
-        pygame.draw.rect(screen, self.color, rect_visivel)
+        self.image = superficie_solida((size, size), BLACK)

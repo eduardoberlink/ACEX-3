@@ -1,11 +1,15 @@
 import pygame
 
+PRETO = (0, 0, 0)
+
+
 class Porta(pygame.Rect):
+    """Saída da fase: um quadrado preto de lado `size`."""
+
     def __init__(self, x, y, size):
-        # Cria um retângulo preto na posição X, Y com largura e altura = size
         super().__init__(x, y, size, size)
-        self.color = (0, 0, 0) # Cor Preta
+        self.color = PRETO
 
     def draw(self, screen):
-        # Desenha diretamente na tela (sem cálculo de câmera)
+        # Desenha direto na tela (ainda não existe câmera)
         pygame.draw.rect(screen, self.color, self)

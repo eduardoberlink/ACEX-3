@@ -1,57 +1,47 @@
 import pygame
-from pygame.locals import *
+from pygame.locals import K_a, K_d, K_w
+
 
 class Player(pygame.Rect):
+    # Física da FASE 4
+    GRAVITY = 0.5
+    JUMP_FORCE = -10
+    SPEED_X = 5
+    DASH_SPEED = 100        # dash longo
+    MAX_JUMPS = 2           # pulo duplo
+    CLIMB_SPEED = 4
+    SIDE_TOUCH_BUFFER = 5   # margem para considerar "encostado na parede"
+    COLOR = (255, 0, 0)
+
     def __init__(self, x, y, size, screen_width):
         super().__init__(x, y, size, size)
-        self.color = (255, 0, 0) # Vermelho
-        
         self.start_pos = (x, y)
         self.screen_width = screen_width
-
-        # Física da FASE 4 (Valores altos)
-        self.vel_y = 0
-        self.gravity = 0.5
-        self.jump_force = -10     # Pulo alto
-        self.speed_x = 5          # Movimento rápido
-        self.dash_speed = 100     # Dash longo
-        
-        # Estados
-        self.is_on_ground = False
-        self.is_dashing = False
-        self.can_dash = True
-        self.direction = 1 
-        
-        self.max_jumps = 2
-        self.jumps_left = self.max_jumps
-
-        # Escalada
-        self.climb_speed = 4
-        self.side_touch_buffer = 5
+        self.reset()
 
     def reset(self):
-        self.bottomleft = self.start_pos
+        self.topleft = self.start_pos
         self.vel_y = 0
         self.is_on_ground = False
-        self.jumps_left = self.max_jumps
-        self.can_dash = True
         self.is_dashing = False
-        self.direction = 1
+        self.can_dash = True
+        self.direction = 1  # 1 direita, -1 esquerda
+        self.jumps_left = self.MAX_JUMPS
 
     def handle_input(self):
         keys = pygame.key.get_pressed()
         dx = 0
         if keys[K_a]:
-            dx = -self.speed_x
+            dx = -self.SPEED_X
             self.direction = -1
         if keys[K_d]:
-            dx = self.speed_x
+            dx = self.SPEED_X
             self.direction = 1
         return dx, keys
 
     def jump(self):
         if self.jumps_left > 0:
-            self.vel_y = self.jump_force
+            self.vel_y = self.JUMP_FORCE
             self.jumps_left -= 1
             self.is_on_ground = False
 
@@ -60,80 +50,66 @@ class Player(pygame.Rect):
             self.is_dashing = True
             self.can_dash = False
 
+    def _pousar(self, plat):
+        """Fica em cima da plataforma e recarrega pulo e dash."""
+        self.bottom = plat.top
+        self.vel_y = 0
+        self.is_on_ground = True
+        self.jumps_left = self.MAX_JUMPS
+        self.can_dash = True
+
     def update(self, plataformas):
         dx, keys = self.handle_input()
 
-        # Lógica do Dash
+        # Dash: um impulso de um único frame
         if self.is_dashing:
-            dx = self.dash_speed * self.direction
+            dx = self.DASH_SPEED * self.direction
             self.is_dashing = False
 
-        # --- Movimento Horizontal ---
+        # --- Movimento horizontal ---
         self.x += dx
-        # Manter na tela
         self.left = max(0, self.left)
         self.right = min(self.screen_width, self.right)
 
-        # Colisão Horizontal
         for plat in plataformas:
-            if self.colliderect(plat):
-                if self.bottom > plat.top + 5 and self.top < plat.bottom - 5:
-                    if dx > 0:
-                        self.right = plat.left
-                    elif dx < 0:
-                        self.left = plat.right
+            if self.colliderect(plat) and self.bottom > plat.top + 5 and self.top < plat.bottom - 5:
+                if dx > 0:
+                    self.right = plat.left
+                elif dx < 0:
+                    self.left = plat.right
 
-        # --- Movimento Vertical ---
-        self.vel_y += self.gravity
-        
-        # Lógica de Escalar (se pressionar W na parede)
-        touching_side = False
-        for plat in plataformas:
-             if self.colliderect(plat):
-                # Verifica sobreposição vertical (ignora teto/chão)
-                if (self.bottom > plat.top + self.side_touch_buffer) and \
-                   (self.top < plat.bottom - self.side_touch_buffer):
-                    touching_side = True
-                    break
-        
-        if touching_side and keys[K_w]:
-            self.y -= self.climb_speed
+        # --- Movimento vertical ---
+        self.vel_y += self.GRAVITY
+
+        # Escalada: segurando W encostado na lateral de uma plataforma
+        encostado = any(
+            self.colliderect(plat)
+            and self.bottom > plat.top + self.SIDE_TOUCH_BUFFER
+            and self.top < plat.bottom - self.SIDE_TOUCH_BUFFER
+            for plat in plataformas
+        )
+        if encostado and keys[K_w]:
+            self.y -= self.CLIMB_SPEED
             self.vel_y = 0
         else:
             self.y += self.vel_y
 
-        # Colisão Vertical (Chão e Teto)
-        on_platform = False
-        # Calculamos onde "estávamos" antes de cair para evitar atravessar (tunneling)
+        # --- Colisão vertical (chão e teto) ---
+        # Onde o pé estava antes de cair, para não atravessar a plataforma
         prev_bottom = self.bottom - self.vel_y
+        self.is_on_ground = False
 
         for plat in plataformas:
-            if self.colliderect(plat):
-                # Caindo
-                if prev_bottom <= plat.top and self.bottom >= plat.top and self.vel_y >= 0:
-                    self.bottom = plat.top
-                    self.vel_y = 0
-                    self.is_on_ground = True
-                    on_platform = True
-                    self.jumps_left = self.max_jumps
-                    self.can_dash = True
-                # Batendo a cabeça
-                elif prev_bottom >= plat.bottom and self.top <= plat.bottom and self.vel_y < 0:
-                    self.top = plat.bottom
-                    self.vel_y = 0
-                # Correção genérica
-                elif self.centery < plat.centery:
-                    self.bottom = plat.top
-                    self.vel_y = 0
-                    self.is_on_ground = True
-                    on_platform = True
-                    self.jumps_left = self.max_jumps
-                    self.can_dash = True
-
-        if not on_platform:
-            self.is_on_ground = False
+            if not self.colliderect(plat):
+                continue
+            if prev_bottom <= plat.top and self.bottom >= plat.top and self.vel_y >= 0:
+                self._pousar(plat)                     # caindo
+            elif prev_bottom >= plat.bottom and self.top <= plat.bottom and self.vel_y < 0:
+                self.top = plat.bottom                 # batendo a cabeça
+                self.vel_y = 0
+            elif self.centery < plat.centery:
+                self._pousar(plat)                     # correção genérica
 
     def draw(self, screen):
-        # AQUI É O PULO DO GATO DIDÁTICO:
-        # Não existe "camera.apply(self)". O aluno vê que desenha direto.
-        pygame.draw.rect(screen, self.color, self)
+        # Não existe "camera.apply(self)" ainda: desenha direto na tela.
+        pygame.draw.rect(screen, self.COLOR, self)
